@@ -45,5 +45,5 @@ export const weatherAgent = new Agent({
       },
     },
   },
-  memory: new Memory(),
+  // memory: new Memory(), // temporarily disabled to be parallel to the debate agents -- this one will be the control test for advice quality
 });
