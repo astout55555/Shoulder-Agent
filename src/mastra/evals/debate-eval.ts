@@ -13,7 +13,6 @@ import { mastra } from '../index';
 import {
   reasoningDepthScorer,
   decisivenessScorer,
-  adviceCompletenessScorer,
   adviceBiasScorer,
   adviceRelevancyScorer,
 } from '../scorers/advice-scorers';
@@ -141,7 +140,7 @@ async function runExperimentWithProgress(
 async function main() {
   const runStart = Date.now();
   console.log('=== Debate Workflow vs Control Agent Evaluation ===\n');
-  console.log(`${scenarios.length} scenarios, 5 scorers, 2 workflows\n`);
+  console.log(`${scenarios.length} scenarios, 4 scorers, 2 workflows\n`);
 
   // Use a stable dataset name so it's easy to find in Studio.
   // Delete and recreate if it already exists.
@@ -174,7 +173,6 @@ async function main() {
   const scorers = [
     reasoningDepthScorer,
     decisivenessScorer,
-    adviceCompletenessScorer,
     adviceBiasScorer,
     adviceRelevancyScorer,
   ];
@@ -187,7 +185,7 @@ async function main() {
     targetId: 'debate-workflow',
     scorers,
     maxConcurrency: 2,
-    maxRetries: 1,
+    maxRetries: 3,
     itemTimeout: 300_000, // 5 min per item (debate has multiple LLM calls + LLM scorers)
   }, scenarios.length);
 
@@ -199,8 +197,8 @@ async function main() {
     targetId: 'control-workflow',
     scorers,
     maxConcurrency: 2,
-    maxRetries: 1,
-    itemTimeout: 180_000, // 3 min per item (single LLM call + LLM scorers)
+    maxRetries: 3,
+    itemTimeout: 240_000, // 4 min per item (single LLM call + LLM scorers)
   }, scenarios.length);
 
   // Compare experiments

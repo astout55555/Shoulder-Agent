@@ -49,14 +49,14 @@ function getInputData(input: unknown): AdviceInput | null {
   return null;
 }
 
-// -- 1. Reasoning Depth Scorer (LLM-judged with o3-mini) --
+// -- 1. Reasoning Depth Scorer (LLM-judged with gpt-5-mini) --
 
 export const reasoningDepthScorer = createScorer({
   id: 'reasoning-depth',
   name: 'Reasoning Depth',
   description: 'Evaluates the logical depth, specificity, and quality of reasoning in advice output',
   judge: {
-    model: 'openai/o3-mini',
+    model: 'openai/gpt-5-mini',
     instructions: 'You are an expert evaluator of reasoning quality in decision-making advice. Evaluate the logical depth, specificity, and coherence of the reasoning provided.',
   },
 })
@@ -153,72 +153,14 @@ export const decisivenessScorer = createScorer({
     return 'No clear recommendation found in the output.';
   });
 
-// -- 3. Completeness Scorer (LLM-judged) --
-
-export const adviceCompletenessScorer = createScorer({
-  id: 'advice-completeness',
-  name: 'Advice Completeness',
-  description: 'Measures whether the output engages with all user-stated pros and cons for both options',
-  judge: {
-    model: 'openai/o3-mini',
-    instructions: 'You are an expert evaluator of advice completeness. Assess whether the advice addresses all of the user-stated pros and cons for both options, even if it uses different wording or paraphrases.',
-  },
-})
-  .preprocess(({ run }) => {
-    const inputData = getInputData(run.input);
-    const outputText = getOutputText(run.output);
-    return { inputData, outputText };
-  })
-  .analyze({
-    description: 'Check coverage of each user-stated pro and con',
-    outputSchema: z.object({
-      option1ProsCoverage: z.number().min(0).max(1).describe('What fraction of Option A pros are addressed (even via paraphrase or synonym)? 0=none, 1=all'),
-      option1ConsCoverage: z.number().min(0).max(1).describe('What fraction of Option A cons are addressed? 0=none, 1=all'),
-      option2ProsCoverage: z.number().min(0).max(1).describe('What fraction of Option B pros are addressed? 0=none, 1=all'),
-      option2ConsCoverage: z.number().min(0).max(1).describe('What fraction of Option B cons are addressed? 0=none, 1=all'),
-      explanation: z.string().describe('Brief explanation noting any significant omissions'),
-    }),
-    createPrompt: ({ results }) => {
-      const { inputData, outputText } = results.preprocessStepResult;
-      if (!inputData) return `No input data available. Output: ${outputText}`;
-      return `Evaluate how completely this advice addresses the user's stated pros and cons.
-
-User's decision:
-Option A: ${inputData.option1}
-  Pros: ${inputData.pros1}
-  Cons: ${inputData.cons1}
-
-Option B: ${inputData.option2}
-  Pros: ${inputData.pros2}
-  Cons: ${inputData.cons2}
-
-Advice output:
-"""
-${outputText}
-"""
-
-For each of the 4 lists (Option A pros, Option A cons, Option B pros, Option B cons), rate what fraction of the listed points are substantively addressed in the output. Count a point as "addressed" if the advice engages with the underlying concept, even if using different words (e.g., "higher salary" covers "significantly higher salary", "job security concerns" covers "startup with less job security").`;
-    },
-  })
-  .generateScore(({ results }) => {
-    const r = (results as any)?.analyzeStepResult;
-    if (!r) return 0;
-    return (r.option1ProsCoverage + r.option1ConsCoverage + r.option2ProsCoverage + r.option2ConsCoverage) / 4;
-  })
-  .generateReason(({ results, score }) => {
-    const r = (results as any)?.analyzeStepResult;
-    if (!r) return `Score: ${score}. Analysis unavailable.`;
-    return `Completeness: ${score.toFixed(2)}. A-pros=${r.option1ProsCoverage}, A-cons=${r.option1ConsCoverage}, B-pros=${r.option2ProsCoverage}, B-cons=${r.option2ConsCoverage}. ${r.explanation}`;
-  });
-
-// -- 4. Bias Detection Scorer (LLM-judged) --
+// -- 3. Bias Detection Scorer (LLM-judged) --
 
 export const adviceBiasScorer = createScorer({
   id: 'advice-bias',
   name: 'Advice Bias',
   description: 'Evaluates whether the output fairly considers both options before making a recommendation',
   judge: {
-    model: 'openai/o3-mini',
+    model: 'openai/gpt-5-mini',
     instructions: 'You are an expert evaluator of fairness and bias in decision-making advice. Assess whether the advice fairly considers both options before making its recommendation.',
   },
 })
@@ -279,7 +221,7 @@ export const adviceRelevancyScorer = createScorer({
   name: 'Advice Relevancy',
   description: 'Evaluates whether the advice is specific to the decision at hand vs generic advice',
   judge: {
-    model: 'openai/o3-mini',
+    model: 'openai/gpt-5-mini',
     instructions: 'You are an expert evaluator of advice quality. Assess whether the advice is specific and actionable for the users particular decision.',
   },
 })
@@ -334,7 +276,6 @@ Assess:
 export const adviceScorers = {
   reasoningDepthScorer,
   decisivenessScorer,
-  adviceCompletenessScorer,
   adviceBiasScorer,
   adviceRelevancyScorer,
 };
