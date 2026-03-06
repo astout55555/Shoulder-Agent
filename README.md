@@ -57,10 +57,10 @@ The eval script (`src/mastra/evals/debate-eval.ts`) runs both workflows against 
 
 | Scorer | Type | What it measures |
 |---|---|---|
-| Reasoning Depth | LLM-judged (o3-mini) | Specificity, situational relevance, counterargument awareness, logical coherence |
+| Reasoning Depth | LLM-judged | Specificity, situational relevance, counterargument awareness, logical coherence |
 | Decisiveness | Rule-based | Presence of a clear, unambiguous recommendation without excessive hedging |
-| Advice Bias | LLM-judged (o3-mini) | Fair treatment of both options before recommending |
-| Advice Relevancy | LLM-judged (o3-mini) | Specificity to the user's situation vs. generic advice |
+| Advice Bias | LLM-judged | Fair treatment of both options before recommending |
+| Advice Relevancy | LLM-judged | Specificity to the user's situation vs. generic advice |
 
 ### Results
 
