@@ -3,6 +3,8 @@ import { Memory } from '@mastra/memory';
 import { weatherTool } from '../tools/weather-tool';
 import { scorers } from '../scorers/weather-scorer';
 
+// this isn't a good control option because of its system prompt, however, it's a good general reference for now (uses some other features I might want to include)
+
 export const weatherAgent = new Agent({
   id: 'weather-agent',
   name: 'Weather Agent',
@@ -45,5 +47,5 @@ export const weatherAgent = new Agent({
       },
     },
   },
-  // memory: new Memory(), // temporarily disabled to be parallel to the debate agents -- this one will be the control test for advice quality
+  memory: new Memory(),
 });
