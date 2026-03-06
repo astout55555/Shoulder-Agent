@@ -64,7 +64,7 @@ The eval script (`src/mastra/evals/debate-eval.ts`) runs both workflows against 
 
 ### Results
 
-Across three eval runs (6 scenarios each), the debate workflow consistently produced marginally stronger reasoning depth scores, but the differences were small. Advice relevancy was the same or marginally worse than control, reflecting an expected and unproblematic drift in focus from initial user input to final moderator output. Advice bias scores were either the same or somewhat improved compared to control. No improvement was larger than the max run-to-run variation across scorers (.042), but it is notable that the only consistent improvement was the main target: reasoning depth.
+Across three eval runs (6 scenarios each), the debate workflow consistently produced marginally stronger reasoning depth scores, but the differences were small (at most +0.125 for a single run of a single scenario, but an average range of +0.021 - +0.037). Advice relevancy was the same or marginally worse than control, reflecting an expected and unproblematic drift in focus from initial user input to final moderator output. Advice bias scores were either the same or somewhat improved compared to control. It is notable that the only consistent improvement was the main target: reasoning depth.
 
 The main takeaway: the adversarial debate structure does not deliver a signficant quality improvement over a well-prompted single-pass agent for this type of binary decision task. The debate approach uses ~5x more LLM calls per scenario and takes significantly longer to run for marginal benefits.
 
