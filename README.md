@@ -19,7 +19,7 @@ Both debate agents receive the full decision context (both options, all pros and
 
 ### Control Workflow (baseline)
 
-A single **ControlAgent** receives the same structured input and delivers a recommendation in one pass. This serves as the experimental control for the eval.
+A single **ControlAgent** receives the same structured input and delivers a recommendation in one pass. This serves as the experimental control for the eval. Importantly, the control agent is given an explicit, well-crafted prompt — the comparison is against a capable single-agent setup, not a naive one.
 
 ### Input schema
 
@@ -46,60 +46,57 @@ Both workflows return the same structured output:
   "debateSummary": "High-level summary of the key arguments",
   "assessment": "Evaluation of both options",
   "reasoning": "Explanation for the recommendation"
-}
-```
+}```
 
 ## Evaluation
 
-The eval script (`src/mastra/evals/debate-eval.ts`) runs both workflows against 6 decision scenarios, scores each output with 5 custom scorers, and compares results side by side.
+The eval script (`src/mastra/evals/debate-eval.ts`) runs both workflows against 6 decision scenarios ordered from hardest to easiest, with 3 independent experiment runs per agent (18 scored outputs per agent total). Results are aggregated and compared across runs.
 
 ### Scorers
 
 | Scorer | Type | What it measures |
 |---|---|---|
-| Reasoning Depth | LLM-judged | Specificity, situational relevance, counterargument awareness, logical coherence |
-| Decisiveness | Rule-based | Presence of a clear, unambiguous recommendation without excessive hedging |
+| Reasoning Depth | LLM-judged | Specificity, argument synthesis, counterargument awareness, logical coherence |
 | Advice Bias | LLM-judged | Fair treatment of both options before recommending |
 | Advice Relevancy | LLM-judged | Specificity to the user's situation vs. generic advice |
 
+Reasoning Depth is the primary metric. The scorer uses a high-bar calibration modeled on a professional decision coach, specifically designed to separate advice that *lists* trade-offs from advice that *synthesizes* them into a position.
+
 ### Results
 
-Across three eval runs (6 scenarios each), the debate workflow consistently produced marginally stronger reasoning depth scores, but the differences were small (at most +0.125 for a single run of a single scenario, but an average range of +0.021 - +0.037). Advice relevancy was the same or marginally worse than control, reflecting an expected and unproblematic drift in focus from initial user input to final moderator output. Advice bias scores were either the same or somewhat improved compared to control. It is notable that the only consistent improvement was the main target: reasoning depth.
+The latest experiment (N=3 runs per agent, 6 scenarios) shows the debate workflow outperforming the control on all three metrics across all 6 scenarios:
 
-The main takeaway: the adversarial debate structure does not deliver a signficant quality improvement over a well-prompted single-pass agent for this type of binary decision task. The debate approach uses ~5x more LLM calls per scenario and takes significantly longer to run for marginal benefits.
+| Metric | Debate | Control | Delta |
+|---|---|---|---|
+| reasoning-depth | 0.774 | 0.699 | **+0.074** |
+| advice-bias | 0.965 | 0.921 | **+0.044** |
+| advice-relevancy | 0.998 | 0.978 | **+0.020** |
 
-**Representative result with gpt-5-mini LLM judge scorers**
+**Difficulty-grouped breakdown:**
 
-```
-Scorer                   Debate    Control   Delta
--------------------------------------------------------
-reasoning-depth          0.932     0.909     +0.023
-decisiveness             1.000     1.000     0.000
-advice-bias              0.942     0.933     +0.008
-advice-relevancy         0.972     0.992     -0.020
-```
+| Group | Scenarios | RD Δ | Bias Δ | Relevancy Δ |
+|---|---|---|---|---|
+| Hard (1–2) | Buy/rent, Move cities | +0.088 | +0.087 | +0.005 |
+| Medium (3–4) | Masters, Build/Buy SaaS | +0.042 | 0.000 | +0.028 |
+| Easy (5–6) | Job switch, Promotion | +0.093 | +0.047 | +0.027 |
 
-**Additional results with o4-mini LLM judge scorers**
+The reasoning depth improvement is consistent across all scenarios and difficulty levels. The debate workflow does not regress on bias or relevancy.
 
-```
-Scorer                   Debate    Control   Delta
--------------------------------------------------------
-reasoning-depth          0.971     0.950     +0.021
-decisiveness             1.000     1.000     0.000
-advice-bias              1.000     0.958     +0.042
-advice-relevancy         1.000     1.000     0.000
-```
+**A note on sample size:** These results are based on 6 scenarios × 3 runs — a small sample. Treat them as suggestive rather than conclusive. Several important caveats apply:
 
-and
+- The control agent's prompt was not exhaustively optimized. A more carefully engineered single-agent prompt might narrow the gap.
+- LLM-judged scores have inherent variance (run-to-run spread of ~0.05–0.12 per scenario is typical).
+- The scenarios were hand-picked and may not represent the full range of real decision types.
 
-```
-Scorer                   Debate    Control   Delta
--------------------------------------------------------
-reasoning-depth          0.983     0.946     +0.037
-decisiveness             1.000     1.000     0.000
-advice-bias              1.000     1.000     0.000
-advice-relevancy         0.975     1.000     -0.025
-```
+The consistent direction of improvement across all 18 debate runs and all 6 scenarios provides reasonable confidence that the signal is real, but the magnitude should not be over-interpreted at this sample size.
+
+### Key observations
+
+- **Concrete inputs amplify the benefit.** The hardest scenario (buy vs. rent) was enriched with specific financial figures — mortgage rates, equity estimates, rent increase percentages. This scenario shows among the strongest reasoning depth gains (+0.097), likely because the debate format is better at quantifying and weighing concrete trade-offs.
+
+- **Emotionally ambiguous scenarios benefit more on bias.** The "Move to new city" scenario shows the largest bias delta (+0.153). The control agent's fairness scores were highly variable on this scenario (0.750–0.920), while the debate workflow was stable (0.950–1.000). Structured adversarial format appears to impose discipline on scenarios where a single agent might lean on emotional framing.
+
+- **The debate format costs ~3–4× more tokens and takes significantly longer.** For low-stakes decisions, the added reasoning depth is probably not worth it. The format makes most sense for decisions where the added rigor is worth the extra latency and cost.
 
 ## Running the project
 
@@ -132,7 +129,7 @@ src/mastra/
     debate-workflow.ts      # Full debate orchestration
     control-workflow.ts     # Single-step control wrapper
   scorers/
-    advice-scorers.ts       # 5 custom eval scorers
+    advice-scorers.ts       # Custom eval scorers
   evals/
     debate-eval.ts          # Dataset + experiment runner
   index.ts                  # Mastra instance

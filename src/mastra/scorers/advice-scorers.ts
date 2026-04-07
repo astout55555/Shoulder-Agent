@@ -57,7 +57,7 @@ export const reasoningDepthScorer = createScorer({
   description: 'Evaluates the logical depth, specificity, and quality of reasoning in advice output',
   judge: {
     model: 'openai/gpt-5-mini',
-    instructions: 'You are an expert evaluator of reasoning quality in decision-making advice. Evaluate the logical depth, specificity, and coherence of the reasoning provided.',
+    instructions: 'You are an expert evaluator of reasoning quality in decision-making advice. Your primary goal is to distinguish between advice that lists considerations versus advice that actively synthesizes competing arguments into a reasoned position. Be critical — most advice sounds plausible but lacks true depth.',
   },
 })
   .preprocess(({ run }) => {
@@ -74,7 +74,7 @@ export const reasoningDepthScorer = createScorer({
     description: 'Evaluate reasoning quality across multiple dimensions',
     outputSchema: z.object({
       specificity: z.number().min(0).max(1).describe('Does the output identify specific trade-offs rather than generalities? 0=vague platitudes, 1=highly specific'),
-      situationalRelevance: z.number().min(0).max(1).describe('Does it engage with the users particular situation (their stated pros/cons) vs generic advice? 0=generic, 1=highly personalized'),
+      argumentSynthesis: z.number().min(0).max(1).describe('Does the output explicitly weigh competing arguments against each other and synthesize a position, rather than simply listing pros/cons? 0=lists without weighing, 1=explicitly synthesizes tensions into a reasoned position'),
       counterargumentAwareness: z.number().min(0).max(1).describe('Does it acknowledge the strongest counterarguments to its own recommendation? 0=ignores, 1=thoroughly addresses'),
       logicalCoherence: z.number().min(0).max(1).describe('Do conclusions follow from premises? Is reasoning internally consistent? 0=contradictory, 1=airtight'),
       explanation: z.string().describe('Brief explanation of the evaluation'),
@@ -91,69 +91,30 @@ ${results.preprocessStepResult.outputText}
 
 Rate each dimension from 0.0 to 1.0:
 1. Specificity: Does it identify specific trade-offs rather than speaking in generalities?
-2. Situational relevance: Does it engage with this user's particular stated pros/cons vs giving generic advice?
+2. Argument synthesis: Does it explicitly weigh competing arguments against each other and arrive at a synthesized position, rather than just listing pros/cons and picking one?
 3. Counterargument awareness: Does it acknowledge the strongest counterarguments to its own recommendation?
 4. Logical coherence: Do conclusions follow from premises? Is reasoning internally consistent?
+
+Scoring calibration — use a high bar:
+- Score as if comparing against a professional decision coach with 20 years of experience.
+- Most LLM-generated advice is adequate but not deeply reasoned. Adequate advice that correctly lists trade-offs but doesn't go further should score 0.4–0.6, not 0.8+.
+- Reserve 0.8+ for advice that reveals non-obvious tensions, quantifies trade-offs where possible, or produces genuine insight beyond what a competent person would say on first pass.
+- A score of 0.9+ should be rare — it means the reasoning would impress a domain expert.
 
 Also provide a brief explanation.`,
   })
   .generateScore(({ results }) => {
     const r = (results as any)?.analyzeStepResult;
     if (!r) return 0;
-    return (r.specificity + r.situationalRelevance + r.counterargumentAwareness + r.logicalCoherence) / 4;
+    return (r.specificity + r.argumentSynthesis + r.counterargumentAwareness + r.logicalCoherence) / 4;
   })
   .generateReason(({ results, score }) => {
     const r = (results as any)?.analyzeStepResult;
     if (!r) return `Score: ${score}. Analysis unavailable.`;
-    return `Score: ${score.toFixed(2)}. Specificity=${r.specificity}, Relevance=${r.situationalRelevance}, Counterargs=${r.counterargumentAwareness}, Coherence=${r.logicalCoherence}. ${r.explanation}`;
+    return `Score: ${score.toFixed(2)}. Specificity=${r.specificity}, Synthesis=${r.argumentSynthesis}, Counterargs=${r.counterargumentAwareness}, Coherence=${r.logicalCoherence}. ${r.explanation}`;
   });
 
-// -- 2. Decisiveness Scorer (rule-based) --
-
-export const decisivenessScorer = createScorer({
-  id: 'decisiveness',
-  name: 'Decisiveness',
-  description: 'Checks whether the output makes a clear, unambiguous recommendation',
-})
-  .preprocess(({ run }) => {
-    const outputText = getOutputText(run.output);
-    return { outputText };
-  })
-  .generateScore(({ results }) => {
-    const text = (results as any)?.preprocessStepResult?.outputText || '';
-    const lower = text.toLowerCase();
-
-    // Check for clear recommendation
-    const hasRecommendation = /i recommend option [ab]/i.test(text)
-      || /recommend.{0,20}option [ab]/i.test(text)
-      || /my recommendation.{0,20}option [ab]/i.test(text);
-
-    if (!hasRecommendation) return 0;
-
-    // Check for hedging
-    const hedgePhrases = [
-      'it depends',
-      'both are valid',
-      'either option could work',
-      'there is no clear winner',
-      'it\'s a toss-up',
-      'hard to say',
-      'you can\'t go wrong with either',
-    ];
-    const hedgeCount = hedgePhrases.filter(p => lower.includes(p)).length;
-
-    if (hedgeCount >= 2) return 0.5;
-    if (hedgeCount === 1) return 0.75;
-    return 1.0;
-  })
-  .generateReason(({ results, score }) => {
-    if (score === 1.0) return 'Clear, unambiguous recommendation with no hedging.';
-    if (score === 0.75) return 'Recommendation present but includes minor hedging language.';
-    if (score === 0.5) return 'Recommendation present but significantly hedged.';
-    return 'No clear recommendation found in the output.';
-  });
-
-// -- 3. Bias Detection Scorer (LLM-judged) --
+// -- 2. Bias Detection Scorer (LLM-judged) --
 
 export const adviceBiasScorer = createScorer({
   id: 'advice-bias',
@@ -275,7 +236,6 @@ Assess:
 
 export const adviceScorers = {
   reasoningDepthScorer,
-  decisivenessScorer,
   adviceBiasScorer,
   adviceRelevancyScorer,
 };

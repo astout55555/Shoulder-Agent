@@ -5,6 +5,8 @@
  * - debateWorkflow (multi-agent debate → moderator judgment)
  * - controlWorkflow (single-agent direct advice)
  *
+ * Runs each experiment 3 times per agent to reduce LLM non-determinism noise.
+ *
  * Run: npx tsx src/mastra/evals/debate-eval.ts
  */
 
@@ -12,45 +14,26 @@ import 'dotenv/config';
 import { mastra } from '../index';
 import {
   reasoningDepthScorer,
-  decisivenessScorer,
   adviceBiasScorer,
   adviceRelevancyScorer,
 } from '../scorers/advice-scorers';
 
-// -- Test scenarios --
+// -- Test scenarios (ordered hardest → easiest for difficulty-grouped analysis) --
 
 const scenarios = [
   {
-    input: {
-      option1: 'Stay at current job',
-      option2: 'Accept the new job offer',
-      pros1: 'Stable income, strong relationships with team, deep knowledge of codebase, good work-life balance',
-      pros2: 'Significantly higher salary, more senior title, cutting-edge tech stack, faster career growth',
-      cons1: 'Below market compensation, limited promotion opportunities, tech stack becoming outdated',
-      cons2: 'Unknown team culture, longer commute, startup with less job security, 6-month probation period',
-    },
-  },
-  {
+    // Hardest: financial modeling + opportunity cost + deeply personal, no dominant option
     input: {
       option1: 'Buy a house now',
       option2: 'Continue renting and invest the difference',
-      pros1: 'Building equity, stable housing costs, freedom to renovate, emotional security of ownership',
-      pros2: 'Flexibility to relocate, no maintenance costs, can invest in higher-return assets, lower monthly commitment',
-      cons1: 'Large down payment depletes savings, maintenance responsibility, locked into one location, interest payments',
-      cons2: 'Rent increases over time, no equity building, landlord restrictions, less stability',
+      pros1: '$420k home at 6.8% rate locks in $2,100/mo mortgage that builds ~$800/mo in equity after year 1, in a market averaging 4% annual home appreciation, plus mortgage interest tax deduction',
+      pros2: 'Current rent is $1,650/mo, investing the $1,250/mo difference into index funds averaging 10% historical returns, maintaining $85k liquid savings for career or investment opportunities',
+      cons1: '$84k down payment drops emergency fund to $15k, estimated $4,200/yr in maintenance and insurance, $180k total interest over 30 years, locked into one location',
+      cons2: 'Rent increased 6% last year with no cap on future increases, zero equity after 10 years of renting, no tax deductions, subject to landlord decisions on renewal',
     },
   },
   {
-    input: {
-      option1: 'Build a custom internal tool',
-      option2: 'Buy an off-the-shelf SaaS product',
-      pros1: 'Perfectly fits our workflow, no per-seat licensing fees at scale, full control over features and data',
-      pros2: 'Immediate availability, vendor handles maintenance and updates, proven reliability, dedicated support team',
-      cons1: 'Months of development time, ongoing maintenance burden, opportunity cost for engineering team',
-      cons2: 'Monthly subscription adds up, may not fit all edge cases, data lives on vendor servers, vendor lock-in risk',
-    },
-  },
-  {
+    // Hard: network/life tradeoffs, highly context-dependent
     input: {
       option1: 'Move to a new city for a fresh start',
       option2: 'Stay in current city and make changes locally',
@@ -61,6 +44,7 @@ const scenarios = [
     },
   },
   {
+    // Medium-hard: field-dependent, both options have real merits
     input: {
       option1: 'Pursue a masters degree part-time',
       option2: 'Focus on self-directed learning and certifications',
@@ -71,7 +55,29 @@ const scenarios = [
     },
   },
   {
-    // A scenario where one option is clearly stronger (to test if both approaches catch it)
+    // Medium: classic product/eng tradeoff with established frameworks
+    input: {
+      option1: 'Build a custom internal tool',
+      option2: 'Buy an off-the-shelf SaaS product',
+      pros1: 'Perfectly fits our workflow, no per-seat licensing fees at scale, full control over features and data',
+      pros2: 'Immediate availability, vendor handles maintenance and updates, proven reliability, dedicated support team',
+      cons1: 'Months of development time, ongoing maintenance burden, opportunity cost for engineering team',
+      cons2: 'Monthly subscription adds up, may not fit all edge cases, data lives on vendor servers, vendor lock-in risk',
+    },
+  },
+  {
+    // Medium-easy: balanced pros/cons, common scenario
+    input: {
+      option1: 'Stay at current job',
+      option2: 'Accept the new job offer',
+      pros1: 'Stable income, strong relationships with team, deep knowledge of codebase, good work-life balance',
+      pros2: 'Significantly higher salary, more senior title, cutting-edge tech stack, faster career growth',
+      cons1: 'Below market compensation, limited promotion opportunities, tech stack becoming outdated',
+      cons2: 'Unknown team culture, longer commute, startup with less job security, 6-month probation period',
+    },
+  },
+  {
+    // Easiest: one option is clearly stronger
     input: {
       option1: 'Accept a promotion with a 40% raise and team lead role',
       option2: 'Decline the promotion and stay in current individual contributor role',
@@ -82,6 +88,8 @@ const scenarios = [
     },
   },
 ];
+
+const RUNS_PER_AGENT = 3;
 
 function elapsed(start: number): string {
   const secs = ((Date.now() - start) / 1000).toFixed(1);
@@ -137,21 +145,28 @@ async function runExperimentWithProgress(
 
 // -- Main --
 
-async function main() {
+export async function main() {
   const runStart = Date.now();
   console.log('=== Debate Workflow vs Control Agent Evaluation ===\n');
-  console.log(`${scenarios.length} scenarios, 4 scorers, 2 workflows\n`);
+  console.log(`${scenarios.length} scenarios, 3 scorers, 2 workflows, ${RUNS_PER_AGENT} runs each\n`);
 
-  // Use a stable dataset name so it's easy to find in Studio.
-  // Delete and recreate if it already exists.
+  // Dataset setup: keep a stable dataset, clear and re-add items each run (bumps version)
   const DATASET_NAME = 'shoulder-agent-eval';
   let dataset: any;
+
   try {
     const { datasets: existing } = await mastra.datasets.list();
     const found = existing?.find((d: any) => d.name === DATASET_NAME);
     if (found) {
       dataset = await mastra.datasets.get({ id: found.id });
-      console.log(`Reusing existing dataset "${DATASET_NAME}" (id: ${found.id})`);
+      // Clear old items and re-add current scenarios (creates a new version)
+      const existingItems = await dataset.listItems();
+      const items = Array.isArray(existingItems) ? existingItems : existingItems.items;
+      if (items.length > 0) {
+        await dataset.deleteItems({ itemIds: items.map((i: any) => i.id) });
+      }
+      await dataset.addItems({ items: scenarios });
+      console.log(`Updated dataset "${DATASET_NAME}" (id: ${found.id}) — ${scenarios.length} items, new version created.\n`);
     }
   } catch {
     // list/get may fail if no datasets exist yet
@@ -162,112 +177,146 @@ async function main() {
       name: DATASET_NAME,
       description: 'Binary decision scenarios for comparing debate workflow vs control agent',
     });
-    console.log(`Created dataset "${DATASET_NAME}" (id: ${dataset.id})`);
-
     await dataset.addItems({ items: scenarios });
-    console.log(`Added ${scenarios.length} items.\n`);
-  } else {
-    console.log(`Dataset already has items — skipping insert.\n`);
+    console.log(`Created dataset "${DATASET_NAME}" (id: ${dataset.id}) with ${scenarios.length} items.\n`);
   }
 
   const scorers = [
     reasoningDepthScorer,
-    decisivenessScorer,
     adviceBiasScorer,
     adviceRelevancyScorer,
   ];
 
-  // Run debate workflow experiment
-  console.log('--- [1/2] Debate Workflow Experiment ---');
-  const debateSummary = await runExperimentWithProgress(dataset, {
-    name: `debate-workflow-${Date.now()}`,
-    targetType: 'workflow',
-    targetId: 'debate-workflow',
-    scorers,
-    maxConcurrency: 2,
-    maxRetries: 3,
-    itemTimeout: 300_000, // 5 min per item (debate has multiple LLM calls + LLM scorers)
-  }, scenarios.length);
-
-  // Run control workflow experiment
-  console.log('\n--- [2/2] Control Workflow Experiment ---');
-  const controlSummary = await runExperimentWithProgress(dataset, {
-    name: `control-workflow-${Date.now()}`,
-    targetType: 'workflow',
-    targetId: 'control-workflow',
-    scorers,
-    maxConcurrency: 2,
-    maxRetries: 3,
-    itemTimeout: 240_000, // 4 min per item (single LLM call + LLM scorers)
-  }, scenarios.length);
-
-  // Compare experiments
-  console.log('\n=== Comparison ===\n');
-
-  const comparison = await mastra.datasets.compareExperiments({
-    experimentIds: [debateSummary.experimentId, controlSummary.experimentId],
-    baselineId: controlSummary.experimentId,
-  });
-
-  // Aggregate scores
-  const scorerNames = scorers.map(s => s.id);
-  const debateScores: Record<string, number[]> = {};
-  const controlScores: Record<string, number[]> = {};
-
-  for (const name of scorerNames) {
-    debateScores[name] = [];
-    controlScores[name] = [];
+  // Run debate workflow experiments (3 runs)
+  console.log(`--- Debate Workflow Experiments (${RUNS_PER_AGENT} runs) ---`);
+  const debateExpIds: string[] = [];
+  for (let i = 0; i < RUNS_PER_AGENT; i++) {
+    console.log(`\n  Run ${i + 1}/${RUNS_PER_AGENT}:`);
+    const { experimentId } = await runExperimentWithProgress(dataset, {
+      name: `debate-run-${i + 1}-${Date.now()}`,
+      targetType: 'workflow',
+      targetId: 'debate-workflow',
+      scorers,
+      maxConcurrency: 3,
+      maxRetries: 3,
+      itemTimeout: 300_000, // 5 min per item (debate has multiple LLM calls + LLM scorers)
+    }, scenarios.length);
+    debateExpIds.push(experimentId);
   }
 
-  for (const item of comparison.items) {
-    const inputData = item.input as Record<string, string> | null;
-    const label = inputData
-      ? `"${inputData.option1}" vs "${inputData.option2}"`
-      : `Item ${item.itemId}`;
-    console.log(`--- ${label} ---`);
+  // Run control workflow experiments (3 runs)
+  console.log(`\n--- Control Workflow Experiments (${RUNS_PER_AGENT} runs) ---`);
+  const controlExpIds: string[] = [];
+  for (let i = 0; i < RUNS_PER_AGENT; i++) {
+    console.log(`\n  Run ${i + 1}/${RUNS_PER_AGENT}:`);
+    const { experimentId } = await runExperimentWithProgress(dataset, {
+      name: `control-run-${i + 1}-${Date.now()}`,
+      targetType: 'workflow',
+      targetId: 'control-workflow',
+      scorers,
+      maxConcurrency: 3,
+      maxRetries: 3,
+      itemTimeout: 240_000, // 4 min per item (single LLM call + LLM scorers)
+    }, scenarios.length);
+    controlExpIds.push(experimentId);
+  }
 
-    for (const [expId, result] of Object.entries(item.results)) {
-      if (!result) continue;
-      const isDebate = expId === debateSummary.experimentId;
-      const tag = isDebate ? 'DEBATE' : 'CONTROL';
+  // Collect scores from all experiments via storage (compareExperiments deduplicates, so we query directly)
+  console.log('\n=== Comparison ===\n');
 
-      // Detect failed items: output is null/missing or all scores are 0/null
-      const scoreValues = Object.values(result.scores);
-      const allZeroOrNull = scoreValues.length === 0 || scoreValues.every(s => s === null || s === 0);
-      const isFailed = !result.output && allZeroOrNull;
+  const allExpIds = [...debateExpIds, ...controlExpIds];
+  const debateExpIdSet = new Set(debateExpIds);
+  const scorerNames = scorers.map(s => s.id);
 
-      if (isFailed) {
-        console.log(`  [${tag}] FAILED (excluded from averages)`);
-        continue;
+  const storage = mastra.getStorage();
+  const expStore = await (storage as any).getStore('experiments');
+  const scoresStore = await (storage as any).getStore('scores');
+
+  // Map itemId -> scenario label
+  const itemLabels: Record<string, string> = {};
+  const { results: firstExpResults } = await expStore.listExperimentResults({
+    experimentId: debateExpIds[0],
+    pagination: { page: 0, perPage: 100 },
+  });
+  for (const r of firstExpResults) {
+    const input = r.input as Record<string, string>;
+    itemLabels[r.itemId] = input?.option1 || r.itemId;
+  }
+
+  // Collect scores: scores table has runId=experimentId, entityId=itemId
+  type ScenarioScores = { debate: Record<string, number[]>; control: Record<string, number[]> };
+  const scenarioData: Record<string, ScenarioScores> = {};
+
+  for (const sid of scorerNames) {
+    const { scores: scoreRows } = await scoresStore.listScoresByScorerId({
+      scorerId: sid,
+      pagination: { page: 0, perPage: 500 },
+    });
+    for (const s of scoreRows) {
+      if (!allExpIds.includes(s.runId)) continue;
+      const itemId = s.entityId;
+      const agentType = debateExpIdSet.has(s.runId) ? 'debate' : 'control';
+
+      if (!scenarioData[itemId]) {
+        scenarioData[itemId] = {
+          debate: Object.fromEntries(scorerNames.map(n => [n, []])),
+          control: Object.fromEntries(scorerNames.map(n => [n, []])),
+        };
       }
+      scenarioData[itemId][agentType][sid].push(s.score);
+    }
+  }
 
-      console.log(`  [${tag}]`);
-      for (const [scorerName, score] of Object.entries(result.scores)) {
-        const val = score ?? 0;
-        console.log(`    ${scorerName}: ${typeof val === 'number' ? val.toFixed(3) : val}`);
-        if (isDebate) {
-          debateScores[scorerName]?.push(typeof val === 'number' ? val : 0);
+  // Sort scenarios by difficulty order (matching the scenarios array)
+  const difficultyOrder = scenarios.map(s => s.input.option1);
+  const sorted = Object.entries(scenarioData).sort(([a], [b]) => {
+    const ai = difficultyOrder.indexOf(itemLabels[a] || '');
+    const bi = difficultyOrder.indexOf(itemLabels[b] || '');
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  // Print per-scenario results
+  const debateAllScores: Record<string, number[]> = Object.fromEntries(scorerNames.map(n => [n, []]));
+  const controlAllScores: Record<string, number[]> = Object.fromEntries(scorerNames.map(n => [n, []]));
+
+  for (const [itemId, scores] of sorted) {
+    const label = itemLabels[itemId] || itemId;
+    console.log(`--- "${label}" ---`);
+    for (const agentType of ['DEBATE', 'CONTROL'] as const) {
+      const key = agentType.toLowerCase() as 'debate' | 'control';
+      const runs = scores[key][scorerNames[0]]?.length ?? 0;
+      console.log(`  [${agentType}] (${runs} runs)`);
+      for (const name of scorerNames) {
+        const vals = scores[key][name] ?? [];
+        if (vals.length === 0) {
+          console.log(`    ${name}: no data`);
         } else {
-          controlScores[scorerName]?.push(typeof val === 'number' ? val : 0);
+          const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+          const individual = vals.map(v => v.toFixed(3)).join(', ');
+          console.log(`    ${name}: ${avg.toFixed(3)} (${individual})`);
         }
+      }
+      for (const name of scorerNames) {
+        if (key === 'debate') debateAllScores[name].push(...(scores.debate[name] ?? []));
+        else controlAllScores[name].push(...(scores.control[name] ?? []));
       }
     }
     console.log();
   }
 
-  // Print averages
-  const debateN = debateScores[scorerNames[0]]?.length ?? 0;
-  const controlN = controlScores[scorerNames[0]]?.length ?? 0;
-  console.log(`=== Average Scores (debate: ${debateN}/${scenarios.length} items, control: ${controlN}/${scenarios.length} items) ===\n`);
+  // Print overall averages
+  const debateN = debateAllScores[scorerNames[0]]?.length ?? 0;
+  const controlN = controlAllScores[scorerNames[0]]?.length ?? 0;
+  console.log(`=== Average Scores (debate: ${debateN} runs, control: ${controlN} runs) ===\n`);
   console.log('Scorer'.padEnd(25) + 'Debate'.padEnd(10) + 'Control'.padEnd(10) + 'Delta');
   console.log('-'.repeat(55));
 
   for (const name of scorerNames) {
-    const debateAvg = debateScores[name]?.length
-      ? debateScores[name].reduce((a, b) => a + b, 0) / debateScores[name].length
+    const debateAvg = debateAllScores[name].length
+      ? debateAllScores[name].reduce((a, b) => a + b, 0) / debateAllScores[name].length
       : 0;
-    const controlAvg = controlScores[name]?.length
-      ? controlScores[name].reduce((a, b) => a + b, 0) / controlScores[name].length
+    const controlAvg = controlAllScores[name].length
+      ? controlAllScores[name].reduce((a, b) => a + b, 0) / controlAllScores[name].length
       : 0;
     const delta = debateAvg - controlAvg;
     const sign = delta > 0 ? '+' : '';

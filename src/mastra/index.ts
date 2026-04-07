@@ -10,7 +10,7 @@ import { debateAgentA } from './agents/debate-agent-a';
 import { debateAgentB } from './agents/debate-agent-b';
 import { moderatorAgent } from './agents/moderator-agent';
 import { controlAgent } from './agents/control-agent';
-import { reasoningDepthScorer, decisivenessScorer, adviceBiasScorer, adviceRelevancyScorer } from './scorers/advice-scorers';
+import { reasoningDepthScorer, adviceBiasScorer, adviceRelevancyScorer } from './scorers/advice-scorers';
 
 // Use an absolute path so the DB is the same whether run from project root (eval script)
 // or from .mastra/output/ (mastra dev / Studio).
@@ -21,7 +21,7 @@ const DB_PATH = `file:${resolve(__dirname, '../../mastra.db')}`;
 export const mastra = new Mastra({
   workflows: { debateWorkflow, controlWorkflow },
   agents: { debateAgentA, debateAgentB, moderatorAgent, controlAgent },
-  scorers: { reasoningDepthScorer, decisivenessScorer, adviceBiasScorer, adviceRelevancyScorer },
+  scorers: { reasoningDepthScorer, adviceBiasScorer, adviceRelevancyScorer },
   storage: new LibSQLStore({
     id: "mastra-storage",
     url: DB_PATH,
