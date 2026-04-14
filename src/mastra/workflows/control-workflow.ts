@@ -38,17 +38,36 @@ Option B: ${inputData.option2}
 
 Consider both options and provide your recommendation.`;
 
-    const response = await agent.generate(prompt, {
-      structuredOutput: {
-        schema: controlOutputSchema,
-      },
-    });
-
-    if (!response.object) {
-      throw new Error('Control agent did not return structured output');
+    let response;
+    try {
+      response = await agent.generate(prompt, {
+        structuredOutput: {
+          schema: controlOutputSchema,
+        },
+      });
+    } catch (err) {
+      throw new Error(
+        `Control agent failed on decision "${inputData.option1}" vs "${inputData.option2}": ${(err as Error).message}`,
+      );
     }
 
-    return response.object;
+    const obj = response.object;
+    if (!obj) {
+      throw new Error(
+        `Control agent returned no structured output for decision "${inputData.option1}" vs "${inputData.option2}"`,
+      );
+    }
+
+    const missing = (['recommendation', 'debateSummary', 'assessment', 'reasoning'] as const).filter(
+      (k) => typeof (obj as any)[k] !== 'string' || (obj as any)[k].trim().length === 0,
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Control agent returned incomplete output (missing/empty: ${missing.join(', ')}) for decision "${inputData.option1}" vs "${inputData.option2}"`,
+      );
+    }
+
+    return obj;
   },
 });
 

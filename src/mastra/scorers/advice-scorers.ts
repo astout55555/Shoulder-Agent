@@ -114,7 +114,7 @@ Also provide a brief explanation.`,
     return `Score: ${score.toFixed(2)}. Specificity=${r.specificity}, Synthesis=${r.argumentSynthesis}, Counterargs=${r.counterargumentAwareness}, Coherence=${r.logicalCoherence}. ${r.explanation}`;
   });
 
-// -- 2. Bias Detection Scorer (LLM-judged) --
+// -- 2. Bias Detection Scorer (LLM-judged with gpt-5-mini) --
 
 export const adviceBiasScorer = createScorer({
   id: 'advice-bias',
@@ -122,120 +122,64 @@ export const adviceBiasScorer = createScorer({
   description: 'Evaluates whether the output fairly considers both options before making a recommendation',
   judge: {
     model: 'openai/gpt-5-mini',
-    instructions: 'You are an expert evaluator of fairness and bias in decision-making advice. Assess whether the advice fairly considers both options before making its recommendation.',
+    instructions: 'You are an expert evaluator of fairness and balance in decision-making advice. Be critical — most LLM advice superficially covers both options but leans visibly toward the recommended one. Distinguish between genuine balance and token coverage.',
   },
 })
   .preprocess(({ run }) => {
     const inputData = getInputData(run.input);
     const outputText = getOutputText(run.output);
-    return { inputData, outputText };
-  })
-  .analyze({
-    description: 'Assess fairness of treatment of both options',
-    outputSchema: z.object({
-      fairness: z.number().min(0).max(1).describe('How fairly are both options treated in the analysis? 0=completely one-sided, 1=perfectly balanced analysis before recommendation'),
-      strawmanDetected: z.boolean().describe('Does the output misrepresent or trivialize either options arguments?'),
-      dismissive: z.boolean().describe('Does the output dismiss one option without engaging with its merits?'),
-      explanation: z.string().describe('Brief explanation'),
-    }),
-    createPrompt: ({ results }) => {
-      const { inputData, outputText } = results.preprocessStepResult;
-      const context = inputData
-        ? `Option A: ${inputData.option1} | Option B: ${inputData.option2}`
-        : 'Two options presented';
-      return `Evaluate the fairness of this decision-making advice.
-
-Decision: ${context}
-
-Advice output:
-"""
-${outputText}
-"""
-
-Assess:
-1. Fairness (0-1): Does the analysis engage seriously with BOTH options' merits before recommending? A recommendation is fine, but the analysis leading to it should be fair.
-2. Strawman: Does the output misrepresent or trivialize either option's arguments?
-3. Dismissive: Does it dismiss one option without engaging with its stated merits?`;
-    },
-  })
-  .generateScore(({ results }) => {
-    const r = (results as any)?.analyzeStepResult;
-    if (!r) return 0;
-    let score = r.fairness;
-    if (r.strawmanDetected) score = Math.max(0, score - 0.2);
-    if (r.dismissive) score = Math.max(0, score - 0.2);
-    return score;
-  })
-  .generateReason(({ results, score }) => {
-    const r = (results as any)?.analyzeStepResult;
-    if (!r) return `Score: ${score}. Analysis unavailable.`;
-    const flags = [];
-    if (r.strawmanDetected) flags.push('strawman detected');
-    if (r.dismissive) flags.push('dismissive of one option');
-    return `Fairness: ${score.toFixed(2)}. ${flags.length > 0 ? 'Issues: ' + flags.join(', ') + '. ' : ''}${r.explanation}`;
-  });
-
-// -- 5. Answer Relevancy Scorer (LLM-judged) --
-
-export const adviceRelevancyScorer = createScorer({
-  id: 'advice-relevancy',
-  name: 'Advice Relevancy',
-  description: 'Evaluates whether the advice is specific to the decision at hand vs generic advice',
-  judge: {
-    model: 'openai/gpt-5-mini',
-    instructions: 'You are an expert evaluator of advice quality. Assess whether the advice is specific and actionable for the users particular decision.',
-  },
-})
-  .preprocess(({ run }) => {
-    const inputData = getInputData(run.input);
-    const outputText = getOutputText(run.output);
-    return { inputData, outputText };
-  })
-  .analyze({
-    description: 'Assess relevancy and actionability of advice',
-    outputSchema: z.object({
-      relevancy: z.number().min(0).max(1).describe('How relevant is the advice to the specific decision? 0=completely generic, 1=highly specific to this decision'),
-      usesUserContext: z.boolean().describe('Does the advice reference the users specific stated pros/cons?'),
-      actionable: z.boolean().describe('Does the advice give the user a clear path forward?'),
-      explanation: z.string().describe('Brief explanation'),
-    }),
-    createPrompt: ({ results }) => {
-      const { inputData, outputText } = results.preprocessStepResult;
-      const context = inputData
+    return {
+      inputContext: inputData
         ? `Option A: ${inputData.option1} (Pros: ${inputData.pros1}, Cons: ${inputData.cons1}) | Option B: ${inputData.option2} (Pros: ${inputData.pros2}, Cons: ${inputData.cons2})`
-        : 'Decision context unavailable';
-      return `Evaluate how relevant this advice is to the user's specific decision.
+        : JSON.stringify(run.input),
+      outputText,
+    };
+  })
+  .analyze({
+    description: 'Evaluate fairness and balance across multiple dimensions',
+    outputSchema: z.object({
+      engagementSymmetry: z.number().min(0).max(1).describe('Are both options analyzed with similar depth, specificity, and rigor? 0=one option dominates the analysis, 1=both options receive comparable rigor before any recommendation'),
+      merits: z.number().min(0).max(1).describe("Does the analysis genuinely engage with the non-recommended option's strongest arguments? 0=merits are mentioned then waved away, 1=explicit grappling with why the non-recommended option is genuinely appealing"),
+      framingNeutrality: z.number().min(0).max(1).describe('Is the language used to describe each option neutral, or does word choice prejudge the outcome? 0=loaded framing favors one option from the start, 1=neutral descriptive language throughout the analysis'),
+      counterweightAcknowledgment: z.number().min(0).max(1).describe("Does the output explicitly acknowledge what's being given up by taking the recommended option? 0=recommendation with no acknowledgment of downsides, 1=explicit statement of what the user sacrifices by choosing the recommended option"),
+      explanation: z.string().describe('Brief explanation of the evaluation'),
+    }),
+    createPrompt: ({ results }: any) => `Evaluate the fairness and balance of this decision-making advice.
 
 User's decision context:
-${context}
+${results.preprocessStepResult.inputContext}
 
 Advice output:
 """
-${outputText}
+${results.preprocessStepResult.outputText}
 """
 
-Assess:
-1. Relevancy (0-1): Is this advice specific to THIS decision, or could it apply to any decision?
-2. Uses user context: Does the advice explicitly reference the user's stated pros and cons?
-3. Actionable: Does it give the user a clear path forward (not just analysis)?`;
-    },
+Rate each dimension from 0.0 to 1.0:
+1. Engagement symmetry: Are both options analyzed with similar depth, specificity, and rigor — or does one get substantive analysis while the other gets a few sentences?
+2. Merits: Does the analysis genuinely engage with the non-recommended option's strongest arguments, or does it acknowledge them only to dismiss?
+3. Framing neutrality: Is the language used to describe each option neutral, or does word choice (e.g., "risky," "smart," "obvious") prejudge the outcome before analysis?
+4. Counterweight acknowledgment: After the recommendation, does the output explicitly acknowledge what's being given up — the genuine tradeoffs of the chosen path?
+
+Scoring calibration — use a high bar:
+- Score as if comparing against a professional mediator or decision coach. Genuine balance is rare.
+- Most LLM-generated advice acknowledges both options briefly before picking one — that's adequate but not balanced. Adequate treatment should score 0.5–0.7, not 0.8+.
+- Reserve 0.8+ for advice that gives the non-recommended option real intellectual weight — devoting comparable analysis depth, acknowledging where it's genuinely stronger, and stating the tradeoffs of the final recommendation honestly.
+- A score of 0.9+ should be rare — it means the advice could be read as making a genuine case for the non-recommended option before ultimately arriving at its recommendation.
+
+Also provide a brief explanation.`,
   })
-  .generateScore(({ results }) => {
-    const r = (results as any)?.analyzeStepResult;
+  .generateScore(({ results }: any) => {
+    const r = results?.analyzeStepResult;
     if (!r) return 0;
-    let score = r.relevancy;
-    if (!r.usesUserContext) score = Math.max(0, score - 0.15);
-    if (!r.actionable) score = Math.max(0, score - 0.1);
-    return score;
+    return (r.engagementSymmetry + r.merits + r.framingNeutrality + r.counterweightAcknowledgment) / 4;
   })
-  .generateReason(({ results, score }) => {
-    const r = (results as any)?.analyzeStepResult;
+  .generateReason(({ results, score }: any) => {
+    const r = results?.analyzeStepResult;
     if (!r) return `Score: ${score}. Analysis unavailable.`;
-    return `Relevancy: ${score.toFixed(2)}. Uses user context: ${r.usesUserContext}. Actionable: ${r.actionable}. ${r.explanation}`;
+    return `Score: ${score.toFixed(2)}. Symmetry=${r.engagementSymmetry}, Merits=${r.merits}, Framing=${r.framingNeutrality}, Counterweight=${r.counterweightAcknowledgment}. ${r.explanation}`;
   });
 
 export const adviceScorers = {
   reasoningDepthScorer,
   adviceBiasScorer,
-  adviceRelevancyScorer,
 };

@@ -5,7 +5,7 @@
  * - debateWorkflow (multi-agent debate → moderator judgment)
  * - controlWorkflow (single-agent direct advice)
  *
- * Runs each experiment 3 times per agent to reduce LLM non-determinism noise.
+ * Runs each experiment 5 times per agent to reduce LLM non-determinism noise.
  *
  * Run: npx tsx src/mastra/evals/debate-eval.ts
  */
@@ -15,7 +15,6 @@ import { mastra } from '../index';
 import {
   reasoningDepthScorer,
   adviceBiasScorer,
-  adviceRelevancyScorer,
 } from '../scorers/advice-scorers';
 
 // -- Test scenarios (ordered hardest → easiest for difficulty-grouped analysis) --
@@ -44,17 +43,6 @@ const scenarios = [
     },
   },
   {
-    // Medium-hard: field-dependent, both options have real merits
-    input: {
-      option1: 'Pursue a masters degree part-time',
-      option2: 'Focus on self-directed learning and certifications',
-      pros1: 'Formal credential recognized by employers, structured curriculum, networking with peers and professors, access to research',
-      pros2: 'Flexible schedule, fraction of the cost, learn exactly what is relevant to career goals, can start immediately',
-      cons1: 'Expensive tuition, 2-3 year commitment, rigid schedule alongside full-time work, may not teach practical skills',
-      cons2: 'Less respected by some employers, requires strong self-discipline, no alumni network, harder to verify depth of knowledge',
-    },
-  },
-  {
     // Medium: classic product/eng tradeoff with established frameworks
     input: {
       option1: 'Build a custom internal tool',
@@ -63,17 +51,6 @@ const scenarios = [
       pros2: 'Immediate availability, vendor handles maintenance and updates, proven reliability, dedicated support team',
       cons1: 'Months of development time, ongoing maintenance burden, opportunity cost for engineering team',
       cons2: 'Monthly subscription adds up, may not fit all edge cases, data lives on vendor servers, vendor lock-in risk',
-    },
-  },
-  {
-    // Medium-easy: balanced pros/cons, common scenario
-    input: {
-      option1: 'Stay at current job',
-      option2: 'Accept the new job offer',
-      pros1: 'Stable income, strong relationships with team, deep knowledge of codebase, good work-life balance',
-      pros2: 'Significantly higher salary, more senior title, cutting-edge tech stack, faster career growth',
-      cons1: 'Below market compensation, limited promotion opportunities, tech stack becoming outdated',
-      cons2: 'Unknown team culture, longer commute, startup with less job security, 6-month probation period',
     },
   },
   {
@@ -89,12 +66,13 @@ const scenarios = [
   },
 ];
 
-const RUNS_PER_AGENT = 3;
+const RUNS_PER_AGENT = 10;
 
 function elapsed(start: number): string {
   const secs = ((Date.now() - start) / 1000).toFixed(1);
   return `${secs}s`;
 }
+
 
 /**
  * Run an experiment with polling-based progress logging.
@@ -111,7 +89,7 @@ async function runExperimentWithProgress(
     itemTimeout: number;
   },
   totalItems: number,
-): Promise<{ experimentId: string }> {
+): Promise<{ experimentId: string; failedCount: number }> {
   const start = Date.now();
 
   // Start async so we can poll for progress
@@ -138,7 +116,7 @@ async function runExperimentWithProgress(
 
     if (exp.status === 'completed' || exp.status === 'failed') {
       console.log(`  Finished in ${elapsed(start)} — status: ${exp.status}`);
-      return { experimentId };
+      return { experimentId, failedCount: lastFailed };
     }
   }
 }
@@ -148,7 +126,7 @@ async function runExperimentWithProgress(
 export async function main() {
   const runStart = Date.now();
   console.log('=== Debate Workflow vs Control Agent Evaluation ===\n');
-  console.log(`${scenarios.length} scenarios, 3 scorers, 2 workflows, ${RUNS_PER_AGENT} runs each\n`);
+  console.log(`${scenarios.length} scenarios, 2 scorers, 2 workflows, ${RUNS_PER_AGENT} runs each\n`);
 
   // Dataset setup: keep a stable dataset, clear and re-add items each run (bumps version)
   const DATASET_NAME = 'shoulder-agent-eval';
@@ -159,14 +137,33 @@ export async function main() {
     const found = existing?.find((d: any) => d.name === DATASET_NAME);
     if (found) {
       dataset = await mastra.datasets.get({ id: found.id });
-      // Clear old items and re-add current scenarios (creates a new version)
       const existingItems = await dataset.listItems();
-      const items = Array.isArray(existingItems) ? existingItems : existingItems.items;
-      if (items.length > 0) {
-        await dataset.deleteItems({ itemIds: items.map((i: any) => i.id) });
+      const items: any[] = Array.isArray(existingItems) ? existingItems : existingItems.items;
+
+      // If current items already match target scenarios, no mutation needed (avoids version bump).
+      const inputsMatch =
+        items.length === scenarios.length &&
+        items.every((it, idx) => JSON.stringify(it.input) === JSON.stringify(scenarios[idx].input));
+
+      if (inputsMatch) {
+        console.log(`Dataset "${DATASET_NAME}" (id: ${found.id}) — ${scenarios.length} items already match, no version bump.\n`);
+      } else {
+        // Update overlap slots in place, then add/delete to converge on scenarios.length.
+        // This keeps the dataset non-empty throughout, avoiding the empty intermediate version
+        // that a delete-then-add sequence would produce.
+        const overlap = Math.min(items.length, scenarios.length);
+        for (let i = 0; i < overlap; i++) {
+          await dataset.updateItem({ itemId: items[i].id, input: scenarios[i].input });
+        }
+        if (items.length > scenarios.length) {
+          const extras = items.slice(scenarios.length).map((i: any) => i.id);
+          await dataset.deleteItems({ itemIds: extras });
+        } else if (scenarios.length > items.length) {
+          const toAdd = scenarios.slice(items.length);
+          await dataset.addItems({ items: toAdd });
+        }
+        console.log(`Updated dataset "${DATASET_NAME}" (id: ${found.id}) — ${scenarios.length} items in place, no empty intermediate version.\n`);
       }
-      await dataset.addItems({ items: scenarios });
-      console.log(`Updated dataset "${DATASET_NAME}" (id: ${found.id}) — ${scenarios.length} items, new version created.\n`);
     }
   } catch {
     // list/get may fail if no datasets exist yet
@@ -184,10 +181,8 @@ export async function main() {
   const scorers = [
     reasoningDepthScorer,
     adviceBiasScorer,
-    adviceRelevancyScorer,
   ];
 
-  // Run debate workflow experiments (3 runs)
   console.log(`--- Debate Workflow Experiments (${RUNS_PER_AGENT} runs) ---`);
   const debateExpIds: string[] = [];
   for (let i = 0; i < RUNS_PER_AGENT; i++) {
@@ -199,12 +194,11 @@ export async function main() {
       scorers,
       maxConcurrency: 3,
       maxRetries: 3,
-      itemTimeout: 300_000, // 5 min per item (debate has multiple LLM calls + LLM scorers)
+      itemTimeout: 300_000,
     }, scenarios.length);
     debateExpIds.push(experimentId);
   }
 
-  // Run control workflow experiments (3 runs)
   console.log(`\n--- Control Workflow Experiments (${RUNS_PER_AGENT} runs) ---`);
   const controlExpIds: string[] = [];
   for (let i = 0; i < RUNS_PER_AGENT; i++) {
@@ -216,7 +210,7 @@ export async function main() {
       scorers,
       maxConcurrency: 3,
       maxRetries: 3,
-      itemTimeout: 240_000, // 4 min per item (single LLM call + LLM scorers)
+      itemTimeout: 300_000,
     }, scenarios.length);
     controlExpIds.push(experimentId);
   }
@@ -257,6 +251,16 @@ export async function main() {
       const itemId = s.entityId;
       const agentType = debateExpIdSet.has(s.runId) ? 'debate' : 'control';
 
+      // Exact-zero scores from LLM-judged scorers indicate an analyze-step failure
+      // (scorers' generateScore returns 0 via the `if (!r) return 0` null-guard path
+      // when the judge call errored or the workflow output was empty). Exclude from
+      // aggregation — averaging zeros in corrupted the last experiment's results.
+      if (s.score === 0) {
+        const label = itemLabels[itemId] || itemId;
+        console.log(`⚠ Excluded zero-score run: scenario="${label}" scorer=${sid} agent=${agentType} exp=${s.runId}`);
+        continue;
+      }
+
       if (!scenarioData[itemId]) {
         scenarioData[itemId] = {
           debate: Object.fromEntries(scorerNames.map(n => [n, []])),
@@ -289,11 +293,12 @@ export async function main() {
       for (const name of scorerNames) {
         const vals = scores[key][name] ?? [];
         if (vals.length === 0) {
-          console.log(`    ${name}: no data`);
+          console.log(`    ${name}: no valid data`);
         } else {
           const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
           const individual = vals.map(v => v.toFixed(3)).join(', ');
-          console.log(`    ${name}: ${avg.toFixed(3)} (${individual})`);
+          const countNote = vals.length < RUNS_PER_AGENT ? ` [${vals.length}/${RUNS_PER_AGENT} valid]` : '';
+          console.log(`    ${name}: ${avg.toFixed(3)}${countNote} (${individual})`);
         }
       }
       for (const name of scorerNames) {

@@ -15,20 +15,17 @@ Run the script [debate-eval.ts](scripts/debate-eval.ts).
 
 ## Details
 
-This script will run both the control agent and the Shoulder Agent debate workflow across 6 scenarios, with 3 independent experiment runs per agent (6 experiments total). Each experiment processes all 6 scenarios.
+This script will run both the control agent and the Shoulder Agent debate workflow across 4 scenarios, with 10 independent experiment runs per agent (20 experiments total). Each experiment processes all 4 scenarios.
 
-It will execute the following 3 evaluations for each of these runs:
+It will execute the following 2 evaluations for each of these runs:
 
 1. **reasoningDepthScorer**
 - This is the main eval of concern for the experiment. The purpose of Shoulder Agent is to achieve a meaningfully improved score on the "reasoning depth" metric, as judged by another LLM call. If this is not improved, then that version of Shoulder Agent has no advantage over the control agent, and is just slower and more expensive.
 
 2. **adviceBiasScorer**
-- This is an LLM-judged metric. It should not drop significantly moving from the control agent's score to the Shoulder Agent's score.
+- This is an LLM-judged metric. It should not drop significantly moving from the control agent's score to the Shoulder Agent's score. The debate workflow's adversarial structure is also expected to modestly improve fairness/balance on emotionally ambiguous scenarios.
 
-3. **adviceRelevancyScorer**
-- This is an LLM-judged metric. It should not drop significantly moving from the control agent's score to the Shoulder Agent's score.
-
-The results of the runs across scenarios will be averaged and printed to the console.
+The results of the runs across scenarios will be averaged and printed to the console. If any run is excluded due to a zero-score failure (see the `⚠ Excluded zero-score run` warning), the per-scenario output will annotate the valid count (e.g., `[4/5 valid]`). Note zero-score exclusions when interpreting results — they indicate underlying workflow or judge failures, not genuinely bad outputs.
 
 # Task 2
 
@@ -45,12 +42,13 @@ Find any other notable trends, such as:
 * A particular scenario tends to yield unusual (outlier) score differentials for one or more metrics, between agents
 * A metric with unreliable, highly volitile scores, across scenarios (whether for both agents or between agents)
 
-**Difficulty-grouped analysis:** The 6 scenarios are ordered hardest → easiest. Group them into 3 pairs by difficulty and compute per-group average deltas for each metric:
-- Hard (scenarios 1–2): Buy house vs. rent, Move to new city vs. stay
-- Medium (scenarios 3–4): Masters vs. self-learning, Build vs. Buy SaaS
-- Easy (scenarios 5–6): Stay vs. new job, Accept promotion vs. decline
+**Per-difficulty analysis:** The 4 scenarios span the full difficulty spectrum, with one scenario per tier:
+- Scenario 1 — Hard, quantitative: Buy house vs. rent (rich financial context)
+- Scenario 2 — Hard, qualitative: Move to new city vs. stay (emotionally ambiguous, no quantitative anchor)
+- Scenario 3 — Medium: Build custom tool vs. buy SaaS (established tradeoff framework)
+- Scenario 4 — Easy: Accept promotion vs. decline (one option clearly stronger)
 
-Present both the overall averages and the difficulty-grouped breakdown in a table. Use the grouped results to assess whether the debate workflow's benefit (or deficit) varies by scenario complexity — e.g., does it help more on hard scenarios and hurt on easy ones? Incorporate these grouped findings into your explanations.
+Report per-scenario deltas individually (no grouping — each scenario is its own data point at this scenario count). Use these to assess whether the debate workflow's benefit varies by scenario complexity and by whether the decision is quantitative vs. qualitative. Incorporate these findings into your explanations.
 
 Attempt to provide an explanation for any identified trend in the data. This could also include criticism aimed at the design of the metric evaluations or the sample scenarios themselves. Or, the information might help explain the overall behavior of the shoulder agent compared with the control agent.
 
