@@ -66,33 +66,37 @@ Advice Bias evaluates engagement symmetry, genuine engagement with the non-recom
 
 ### Results
 
-The most recent experiment (N=10 runs per agent, 4 scenarios, 40 valid runs per agent) shows the debate workflow outperforming the control on both metrics across all 4 scenarios:
+The two most recent same-methodology experiments (N=5 and N=10 per agent, pooled for statistical analysis) show the debate workflow outperforming the control on both metrics across all 4 scenarios. The pooled dataset has n=59 debate and n=60 control observations per scorer.
 
-| Metric | Debate | Control | Delta |
-|---|---|---|---|
-| reasoning-depth | 0.789 | 0.741 | **+0.048** |
-| advice-bias | 0.788 | 0.684 | **+0.104** |
+| Metric | Debate | Control | Δ | 95% CI | Cohen's d | p-value |
+|---|---|---|---|---|---|---|
+| reasoning-depth | 0.791 | 0.739 | **+0.053** | [+0.037, +0.068] | 1.24 (large) | **< 10⁻⁹** |
+| advice-bias | 0.789 | 0.674 | **+0.115** | [+0.087, +0.143] | 1.51 (large) | **< 10⁻¹²** |
 
-**Per-scenario breakdown:**
+Both improvements are statistically significant by a wide margin. Effect sizes are large (Cohen's d > 1.2 on both metrics). See [significance-analysis-20260416.md](.claude/skills/statistical-analysis/analysis-output/significance-analysis-20260416.md) for the full analysis including per-scenario t-tests, Mann-Whitney cross-checks, normality diagnostics, and Bonferroni correction.
 
-| Scenario | Difficulty | RD Δ | Bias Δ |
-|---|---|---|---|
-| Buy house vs. rent | Hard, quantitative | +0.038 | +0.027 |
-| Move to new city vs. stay | Hard, qualitative | +0.055 | +0.149 |
-| Build custom tool vs. buy SaaS | Medium | +0.035 | +0.081 |
-| Accept promotion vs. decline | Easy | **+0.065** | **+0.157** |
+**Per-scenario breakdown (N=10 experiment):**
 
-The reasoning depth improvement is positive across all scenarios and difficulty levels. The debate workflow does not regress on bias.
+| Scenario | Difficulty | RD Δ | Bias Δ | RD p-value | Bias p-value |
+|---|---|---|---|---|---|
+| Buy house vs. rent | Hard, quantitative | +0.038 | +0.027 | 0.00092 ✓ | 0.010 |
+| Move to new city vs. stay | Hard, qualitative | +0.055 | +0.149 | 0.00012 ✓ | < 10⁻⁷ ✓ |
+| Build custom tool vs. buy SaaS | Medium | +0.035 | +0.081 | 0.046 | < 10⁻⁵ ✓ |
+| Accept promotion vs. decline | Easy | **+0.065** | **+0.157** | < 10⁻⁵ ✓ | < 10⁻⁸ ✓ |
 
-**A note on certainty:** These results are based on 4 hand-picked scenarios and have not been subjected to a formal significance test (p-value). The experiment provides meaningful evidence but should not be treated as a statistically rigorous conclusion. Additional caveats:
+✓ = passes Bonferroni-corrected threshold (α = 0.00625 for 8 tests). All 8 comparisons pass the uncorrected α = 0.05 threshold; 6 of 8 survive Bonferroni correction. The two that don't — Build/SaaS reasoning-depth and Buy house advice-bias — represent the scenarios where the debate workflow's advantage on that metric is weakest, and both retain positive effect sizes (Cohen's d = 0.76 and 1.02 respectively).
 
+The reasoning depth improvement is consistent across all scenarios and difficulty levels. The debate workflow does not regress on bias.
+
+**Remaining caveats:**
+
+- These results are formally significant within this 4-scenario set; generalization to novel scenarios requires qualitative judgment about whether the scenarios are representative of real decisions.
 - The control agent's prompt was not exhaustively optimized. A more carefully engineered single-agent prompt might narrow the gap.
-- LLM-judged scores have inherent variance — run-to-run spread of ~0.05–0.15 per scenario is typical, especially on emotionally ambiguous scenarios.
-- The scenarios were designed to span the difficulty spectrum but may not represent the full range of real decision types.
+- All scores come from a single LLM judge (gpt-5-mini). Both workflows face the same judge, so the comparison is valid, but the scores themselves reflect that judge's biases and variance.
 
 ### Key observations
 
-- **The signal is consistent across multiple experiments.** Four independent experiments (N=3, N=3, N=5, N=10) all show positive reasoning depth deltas. The pooled estimate across the two latest same-methodology runs (N=5 + N=10, 59 debate / 60 control runs) is **+0.053** — stable enough to suggest the effect is real rather than noise.
+- **The effect is statistically significant and consistent across experiments.** Four independent experiments (N=3, N=3, N=5, N=10) all show positive reasoning depth deltas. The two same-methodology runs (N=5 + N=10, pooled to 59 debate / 60 control observations) produce a reasoning-depth improvement of **+0.053** (p < 10⁻⁹, Cohen's d = 1.24). The directional consistency across all scenarios and all experiment runs rules out the effect being a statistical artifact of any single run.
 
 - **The debate format adds the most value on easy, lopsided scenarios.** The promotion scenario (clearly one correct answer) shows the *highest* reasoning depth delta (+0.065). When one option is obviously stronger, a single-pass agent tends to shortcut genuine construction of the opposing case. The debate format forces the assigned advocate to build real arguments for declining, which surface as acknowledged trade-offs in the final recommendation.
 
