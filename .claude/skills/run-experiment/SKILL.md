@@ -1,7 +1,7 @@
 ---
 name: run-experiment
 description: Runs the Shoulder Agent debate workflow and tests it against the performance of the control agent, using the preset evaluations (rule-based and LLM based). Provides a useful summary of results.
-disable-model-invocation: true
+disable-model-invocation: false
 allowed-tools: Bash(npx tsx *)
 ---
 
