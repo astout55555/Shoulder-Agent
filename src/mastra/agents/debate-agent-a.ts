@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { experimentModel, experimentAgentDefaultOptions } from '../model-config';
 
 export const debateAgentA = new Agent({
   id: 'debate-agent-a',
@@ -24,5 +25,6 @@ When you receive your opponent's arguments (you will be told this is the rebutta
 - Identify logical weaknesses, unsupported assumptions, and gaps in their reasoning.
 - Reinforce your strongest points from Round 1.
 - Stay fully committed to your position.`,
-  model: 'openai/gpt-5-mini',
+  model: experimentModel,
+  defaultOptions: experimentAgentDefaultOptions,
 });

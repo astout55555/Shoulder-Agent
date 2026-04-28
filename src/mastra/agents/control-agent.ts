@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { experimentModel, experimentAgentDefaultOptions } from '../model-config';
 
 export const controlAgent = new Agent({
   id: 'control-agent',
@@ -28,5 +29,6 @@ Explain what tipped the balance. Ground this in the tensions you identified abov
 Be honest about the cost of the recommendation. Name the strongest reason a thoughtful person might reasonably choose the other option. State explicitly what the user sacrifices by following your advice. If there is a condition under which you would change your mind, state it.
 
 Be decisive — do not hedge with "it depends" or "both are valid." But do not shortcut: a real decision requires real engagement with both options, and the user deserves to see that engagement on the page.`,
-  model: 'openai/gpt-5-mini',
+  model: experimentModel,
+  defaultOptions: experimentAgentDefaultOptions,
 });

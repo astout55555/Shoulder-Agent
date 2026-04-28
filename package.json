@@ -17,6 +17,7 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@lmstudio/sdk": "^1.5.0",
     "@mastra/core": "^1.24.1",
     "@mastra/evals": "^1.2.1",
     "@mastra/libsql": "^1.8.0",

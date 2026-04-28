@@ -192,9 +192,9 @@ export async function main() {
       targetType: 'workflow',
       targetId: 'debate-workflow',
       scorers,
-      maxConcurrency: 3,
+      maxConcurrency: 1,
       maxRetries: 3,
-      itemTimeout: 300_000,
+      itemTimeout: 600_000,
     }, scenarios.length);
     debateExpIds.push(experimentId);
   }
@@ -208,9 +208,9 @@ export async function main() {
       targetType: 'workflow',
       targetId: 'control-workflow',
       scorers,
-      maxConcurrency: 3,
+      maxConcurrency: 1,
       maxRetries: 3,
-      itemTimeout: 300_000,
+      itemTimeout: 600_000,
     }, scenarios.length);
     controlExpIds.push(experimentId);
   }

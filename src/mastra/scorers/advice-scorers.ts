@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createScorer } from '@mastra/core/evals';
+import { judgeModel } from '../model-config';
 
 // Type for the structured workflow output
 interface AdviceOutput {
@@ -56,7 +57,7 @@ export const reasoningDepthScorer = createScorer({
   name: 'Reasoning Depth',
   description: 'Evaluates the logical depth, specificity, and quality of reasoning in advice output',
   judge: {
-    model: 'openai/gpt-5-mini',
+    model: judgeModel,
     instructions: 'You are an expert evaluator of reasoning quality in decision-making advice. Your primary goal is to distinguish between advice that lists considerations versus advice that actively synthesizes competing arguments into a reasoned position. Be critical — most advice sounds plausible but lacks true depth.',
   },
 })
@@ -121,7 +122,7 @@ export const adviceBiasScorer = createScorer({
   name: 'Advice Bias',
   description: 'Evaluates whether the output fairly considers both options before making a recommendation',
   judge: {
-    model: 'openai/gpt-5-mini',
+    model: judgeModel,
     instructions: 'You are an expert evaluator of fairness and balance in decision-making advice. Be critical — most LLM advice superficially covers both options but leans visibly toward the recommended one. Distinguish between genuine balance and token coverage.',
   },
 })
