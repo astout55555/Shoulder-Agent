@@ -4,17 +4,27 @@ A multi-agent debate system for binary decision-making, built with [Mastra](http
 
 ## Abstract
 
-This project tests whether a structured multi-agent debate (two advocate agents + a moderator) produces measurably better decision-making advice than a well-prompted single-agent baseline, and whether any advantage generalizes across model scales. Across two model classes (`openai/gpt-5-mini` and a locally hosted `qwen/qwen3.5-2b` via LM Studio) and a 4-scenario set spanning hard-quantitative, hard-qualitative, medium, and easy difficulty, the debate workflow shows a **statistically significant improvement on both reasoning depth and advice bias** at every pool size tested.
+This project is mainly a pilot study to test whether a structured multi-agent debate (two advocate agents + a moderator) produces measurably better decision-making advice than a well-prompted single-agent baseline, and whether any advantage generalizes across model scales. Across two model classes (`openai/gpt-5-mini` and a locally hosted `qwen/qwen3.5-2b` via LM Studio) and a 4-scenario set spanning hard-quantitative, hard-qualitative, medium, and easy difficulty, the debate workflow shows a **statistically significant improvement on both reasoning depth and advice bias** (both with the final analysis of pooled data, and at each incrementation while testing in chunks to avoid errors and unnecessary costs). Findings are tentative, but suggest a full-scale experiment would be valuable.
 
-**Key findings:**
+**Key findings (tentative):**
 
 1. **The debate advantage is real and survives prompt-engineering.** On gpt-5-mini at N=94 vs N=104 (debate vs control), pooled deltas are RD +0.026 (d=0.69, p<10⁻⁵) and Bias +0.076 (d=0.96, p<10⁻⁹). This held after the control agent's prompt was rewritten to match the debate workflow's structural rigor — the gap shrank but did not close.
-2. **The advantage *grows* on a weaker model.** On qwen3.5-2b at N=160 vs N=160 (with judges held constant on gpt-5-mini), pooled deltas are RD +0.062 (d=0.50, p≈10⁻⁵) and Bias +0.096 (d=0.52, p<10⁻⁵) — larger absolute deltas than on gpt-5-mini. The architectural support helps more where the underlying model is weaker.
-3. **The per-scenario picture is bimodal on the weaker model.** Three scenarios show very-large positive effects (Cohen's d up to 3.05); one scenario (Move to new city) shows a Bonferroni-significant *negative* Bias effect (d=−0.98) — a specific failure mode where a weak moderator introduces bias on emotionally ambiguous decisions that the single-pass control happens to handle well by hedging.
-4. **Bias improvement looks more architectural than reasoning depth on a strong model**: on gpt-5-mini, all 4 bias scenarios pass Bonferroni vs only 2 of 4 reasoning-depth scenarios — suggesting that a well-structured single-pass prompt can largely reproduce reasoning decomposition, but producing genuinely balanced treatment of both options is harder without explicit adversarial structure.
-5. **Cost.** The debate workflow uses ~4× more LLM calls than the control (2 openings + 2 rebuttals + 1 moderator vs 1) and takes ~7× longer per scenario in wall-clock terms. The format makes sense for decisions where the added rigor justifies the latency, especially decisions involving emotional ambiguity or quantitative reasoning beyond the model's comfort zone.
+2. **The advantage *grows* on a weaker model, in some cases.** On qwen3.5-2b at N=160 vs N=160 (with judges held constant on gpt-5-mini), pooled deltas are RD +0.062 (d=0.50, p≈10⁻⁵) and Bias +0.096 (d=0.52, p<10⁻⁵) — larger absolute deltas than on gpt-5-mini. The architectural support helps more where the underlying model is weaker.
+3. **The per-scenario picture is bimodal on the weaker model.** Three scenarios show very-large positive effects (Cohen's d up to 3.05); one scenario (Move to new city) shows a Bonferroni-significant *negative* Bias effect (d=−0.98) — a specific failure mode where a weak moderator introduces bias on emotionally ambiguous decisions that the single-pass control happens to handle better by hedging, comparitively (the hypothesis is that the architectural pressure to provide a clear recommendation introduces bias when the model is weak).
+4. **Bias improvement looks more architectural than reasoning depth on a strong model.** On gpt-5-mini, all 4 bias scenarios pass Bonferroni vs only 2 of 4 reasoning-depth scenarios — suggesting that a well-structured single-pass prompt can largely reproduce reasoning decomposition, but producing genuinely balanced treatment of both options is harder without explicit adversarial structure.
+5. **Cost.** The debate workflow uses 5x more LLM calls than the control (2 openings + 2 rebuttals + 1 moderator vs 1) and takes ~7× longer per scenario. The format makes sense for decisions where the added rigor justifies the latency, especially decisions involving emotional ambiguity (with a strong model) or quantitative reasoning (with a weak model).
 
-All claims above are backed by significance testing (Welch's t-test, Mann-Whitney U cross-checks, Bonferroni correction across 8 per-scenario tests) and are reproducible on the same source data; the qwen-model analysis was independently verified by a hand-rolled re-implementation of every statistical primitive.
+All claims above are backed by significance testing (Welch's t-test, Mann-Whitney U cross-checks, Bonferroni correction across 8 per-scenario tests) and are reproducible on the same source data. Calculations were replicated through different iterations/methods to confirm math was correct.
+
+**Key limitations:**
+
+1. **Small sample size can only be partially accounted for via statistical methods.** Total N values for all scenarios and iterations pooled by methodology/model are less than 200. As such, this is more akin to a pilot study than a full-scale, rigorous scientific experiment. Statistical analysis (with Boneferroni correction and considering effect size, etc.) shows strong results suggestive of real and meaningful effects in specific directions, but this could still possibly dissapear in a large-scale study.
+
+2. **Generalizability to other scenarios is limited.** There were only 4 scenarios total (after 2 were cut). Ideally, the experiment would instead be conducted with several (maybe N=10) of each type of scenario (hard quantitative, hard qualitative, medium, and easy decisions), which would improve the confidence with which we could generalize the findings to other scenarios outside of these specific examples. Findings are suggestive of specific mechanisms and causes, but these conclusions must be considered tentative with the amount of data available.
+
+3. **Generalizability across models is limited.** Results were drawn from 2 models that provide a meaningful range (a small local model--2 billion parameters--and a moderately sized GPT model--gpt 5 mini). However, conclusions drawn from this are still tentative hypotheses to explain the results. A full experiment would incorporate a few models from each group (e.g. 3 smaller local models, 3 medium-sized models, and 3 state-of-the-art large models).
+
+4. **Construct validity is inherently limited, and operationalizations were previously untested.** The concepts of "reasoning depth" and "agent bias" were operationalized with system prompts for LLM judges, and are thus limited by the accuracy of this representation as well as the performance of the gpt-5-mini LLM judges in following this prompt. Results suggest a statistically meaningful and sizeable difference, though. If we assume the judges are partially competent (at least directional changes in score are valid, regardless of the accuracy of the total score) and the operationalization is sufficiently valid to be at least relevant, the experimental design still ensures consistency across experimental and control groups and allows us to draw tentative conclusions based on the observed difference in score outputs.
 
 ## Concept
 
@@ -141,7 +151,7 @@ An earlier iteration of these experiments showed pooled deltas roughly twice the
 
 ### When the debate format makes sense in production
 
-- **High-stakes decisions** where the ~4× cost is acceptable.
+- **High-stakes decisions** where the 5x cost is acceptable.
 - **Decisions involving emotional ambiguity** where a single-pass model is most prone to framing drift — assuming a *capable* moderator. (The Move-to-city Qwen failure is a warning.)
 - **Decisions involving rich quantitative inputs** that benefit from being analyzed from each side's perspective in turn.
 - **Decisions where one option is superficially obvious** but the user wants genuine engagement with the case for the other.
@@ -167,10 +177,10 @@ The current setup is the result of iterative refinement:
 - **Advice-relevancy removed:** Both agents scored at or near the ceiling (0.98–1.00) on every run, producing no signal.
 - **Two scenarios removed:** One ill-formed medium scenario (high outlier rate) and a redundant easy scenario, leaving the current 4-scenario hard-qual / hard-quant / medium / easy spread.
 - **Bias scorer redesigned:** The original bias scorer clustered both agents near the ceiling. Redesigned with 4 explicit dimensions and calibration anchors that put typical LLM advice in the 0.5–0.7 range. Pre/post-redesign scores are not comparable.
-- **N increased from 3 → 5 → 10:** Cross-experiment pooling now provides N=24/26 per cell on gpt-5-mini and N=40 per cell on Qwen.
+- **N (per scenario) increased from 3 → 5 → 10 or 10 -> 20:** Cross-experiment pooling now provides N=24/26 per cell on gpt-5-mini and N=40 per cell on Qwen.
 - **Control agent prompt rewritten (2026-04-16):** Rebuilt with explicit Case-for-A / Case-for-B / Key Tensions / What You Are Giving Up structure. Closed about half the reasoning-depth gap and a third of the bias gap. Original archived in `src/experiment-artifacts-history/`.
 - **Moderator agent prompt rewritten (2026-04-17):** Rebuilt symmetrically with the same structural requirements. Restored the debate workflow's advantage to its current gpt-5-mini steady-state.
-- **Cross-model migration (2026-04-25):** Workflow agents pointed at locally hosted `qwen/qwen3.5-2b` via LM Studio at `http://localhost:1234/v1`; LLM-judge scorers held on `openai/gpt-5-mini` to keep judging quality constant. Three same-config experiments at this configuration produced the N=160/160 Qwen pool.
+- **Cross-model migration (2026-04-25):** Workflow agents pointed at locally hosted `qwen/qwen3.5-2b` via LM Studio at `http://localhost:1234/v1`; LLM-judge scorers held on `openai/gpt-5-mini` to keep judging quality constant. Three same-config experiments at this configuration produced the N=160/160 Qwen pool (two runs at N=10, then doubled with N=20 after it was clear that there was still a lot of noise in the data, then all results pooled).
 
 ## Running the project
 
